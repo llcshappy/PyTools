@@ -13,4 +13,4 @@ python Toolkit/SuperResolution/launch.py
 # 3. Click Tool: Snapshoot to get the comparison result.
 ```
 <!-- put an image in the following line -->
-<img src="https://github.com/llcshappy/PyTools/Demo/sr_comp.png" width="500">
+<img src="https://https://github.com/llcshappy/PyTools/blob/main/Demo/sr_comp.png" width="500">
