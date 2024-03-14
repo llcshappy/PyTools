@@ -1,8 +1,16 @@
 # PyTools
 
-![Useful Toolkit for Python Coding.](https://github.com/llcshappy/PyTools/tree/main/Toolkit/icon/icon.png)
-## Examples
-- [x] Multi-Processing Example
+Useful Toolkit for Python Coding and Visualization.
 
+## Features
+### Super Resolution Compare
+#### Usage
+```
+python Toolkit/SuperResolution/launch.py
 
-## 
+# 1. Click File: Uploadleft and Uploadright Images to be compared.
+# 2. Click Edit: Rect select the region to be compared.
+# 3. Click Tool: Snapshoot to get the comparison result.
+```
+<!-- put an image in the following line -->
+<img src="https://github.com/llcshappy/PyTools/Demo/sr_comp.png" width="500">
