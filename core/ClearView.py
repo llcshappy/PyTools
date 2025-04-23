@@ -6,6 +6,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QImage, QCursor, QColor, QLinearGradient, QIcon, QDragEnterEvent, QFont, QRadialGradient
 from PyQt5.QtCore import Qt, QRect, QPoint, QSize, QMimeData, QUrl
 
+# Import the ImageSwap module
+from ImageSwap import ImageSwapHandler
+
 class DropLabel(QLabel):
     """Custom QLabel that accepts drag and drop operations"""
     def __init__(self, parent=None, index=0):
@@ -64,6 +67,9 @@ class ImageViewer(QMainWindow):
         self.show_image_info = True  # Default: show image information
         self.preview_size_factor = 0.5  # Default preview size factor (50% of label)
         self.initUI()
+        
+        # Initialize the image swap handler after UI is set up
+        self.swap_handler = ImageSwapHandler(self)
 
     def initUI(self):
         # Create actions
@@ -966,6 +972,16 @@ class ImageViewer(QMainWindow):
         self.preview_size_factor = value / 100.0  # Convert from percentage to decimal
         self.statusBar.showMessage(f'Preview size set to {value}%', 3000)
         self.updatePixmap()  # Redraw all images with new preview size
+
+    def keyPressEvent(self, event):
+        """Handle keyboard shortcuts"""
+        # Let the swap handler try to handle the key press first
+        if hasattr(self, 'swap_handler') and self.swap_handler.handle_keypress(event):
+            # Event was handled by the swap handler
+            return
+            
+        # Handle other key events
+        super().keyPressEvent(event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
