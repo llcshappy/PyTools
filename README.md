@@ -6,7 +6,7 @@ Useful Toolkit for Python Coding and Visualization.
 ### Image Compare Tools
 The Image Compare Tool is a powerful utility for comparing multiple images side by side. It offers the following capabilities:
 
-![Image Compare Tool](Demo/sr_comp.png)
+![Image Compare Tool](assets/sr_comp.png)
 
 - **Multi-image comparison**: View 2, 3, or 4 images simultaneously in different layouts
 - **Drag and drop support**: Easily load images by dragging them into the application
