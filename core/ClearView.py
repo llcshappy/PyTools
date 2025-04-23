@@ -2,8 +2,8 @@ import sys
 import os
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QAction, QFileDialog, QWidget, QHBoxLayout, QStatusBar,
-    QVBoxLayout, QGridLayout, QActionGroup, QSizePolicy, QToolBar, QMessageBox)
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QImage, QCursor, QColor, QLinearGradient, QIcon, QDragEnterEvent, QFont
+    QVBoxLayout, QGridLayout, QActionGroup, QSizePolicy, QToolBar, QMessageBox, QSlider, QStyle)
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QImage, QCursor, QColor, QLinearGradient, QIcon, QDragEnterEvent, QFont, QRadialGradient
 from PyQt5.QtCore import Qt, QRect, QPoint, QSize, QMimeData, QUrl
 
 class DropLabel(QLabel):
@@ -13,6 +13,11 @@ class DropLabel(QLabel):
         self.setAcceptDrops(True)
         self.index = index  # Store the image index this label corresponds to
         self.parent = parent
+        
+        # Set attributes to prevent window recreation issues that trigger KVO errors on macOS
+        self.setAttribute(Qt.WA_MacShowFocusRect, False)  # Disable focus rect on macOS
+        self.setAttribute(Qt.WA_DontCreateNativeAncestors, True)  # Avoid native ancestor creation
+        self.setAttribute(Qt.WA_NativeWindow, False)  # Disable native window flag
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         # Accept drag event if it contains image files
@@ -39,6 +44,12 @@ class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Multi-Image Comparison Tool')
+        
+        # Fix macOS specific issues with window recreation
+        if sys.platform == 'darwin':
+            self.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
+            self.setAttribute(Qt.WA_NativeWindow, True)
+        
         # List of images
         self.images = [None, None, None, None]  # Support up to 4 images
         self.image_paths = ["", "", "", ""]  # Store the image paths
@@ -51,6 +62,7 @@ class ImageViewer(QMainWindow):
         self.labels = []  # To store all image labels
         self.comparison_mode = 2  # Default: 2 images comparison
         self.show_image_info = True  # Default: show image information
+        self.preview_size_factor = 0.5  # Default preview size factor (50% of label)
         self.initUI()
 
     def initUI(self):
@@ -147,6 +159,40 @@ class ImageViewer(QMainWindow):
         layoutToolbar.addSeparator()
         layoutToolbar.addAction(resetAction)
         layoutToolbar.addAction(self.infoAction)
+        
+        # Add preview size slider to toolbar
+        layoutToolbar.addSeparator()
+        previewLabel = QLabel("Preview Size:")
+        previewLabel.setStyleSheet("font-weight: bold; color: #444;")
+        layoutToolbar.addWidget(previewLabel)
+        
+        self.previewSlider = QSlider(Qt.Horizontal)
+        self.previewSlider.setRange(20, 80)  # 20% to 80% of label size
+        self.previewSlider.setValue(int(self.preview_size_factor * 100))  # Convert to percentage
+        self.previewSlider.setFixedWidth(120)
+        self.previewSlider.setToolTip('Adjust preview size')
+        self.previewSlider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                           stop:0 #c0c0c0, stop:1 #e0e0e0);
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: qradialgradient(cx:0.5, cy:0.5, radius:0.8, fx:0.5, fy:0.5, 
+                                           stop:0 #ffffff, stop:0.6 #2979ff, stop:0.7 #1565c0);
+                width: 16px;
+                height: 16px;
+                margin: -4px 0;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: qradialgradient(cx:0.5, cy:0.5, radius:0.8, fx:0.5, fy:0.5, 
+                                           stop:0 #ffffff, stop:0.6 #42a5f5, stop:0.7 #1e88e5);
+            }
+        """)
+        self.previewSlider.valueChanged.connect(self.updatePreviewSize)
+        layoutToolbar.addWidget(self.previewSlider)
 
         # Create status bar
         self.statusBar = QStatusBar()
@@ -412,12 +458,13 @@ class ImageViewer(QMainWindow):
             info_text = self.getImageInfo(image, self.image_paths[index])
             
             # Create a semi-transparent background for the text
-            info_rect = QRect(x_offset + 10, y_offset + 10, 250, 120)
+            # Use fixed position in the panel's top-left corner (1,1) instead of (10,10)
+            info_rect = QRect(1, 1, 250, 120)
             painter.fillRect(info_rect, QColor(0, 0, 0, 150))  # Semi-transparent black
             
             # Draw the text with a small shadow for better visibility
             font = painter.font()
-            font.setPointSize(8)
+            font.setPointSize(10)  # 增大字体大小，从8改为10
             painter.setFont(font)
             
             # Shadow
@@ -505,9 +552,10 @@ class ImageViewer(QMainWindow):
             
             # Draw the cropped image in the top-right corner if it's valid
             if not cropped_with_border_pixmap.isNull():
+                # Place in the absolute top-right corner of the panel (no margin)
                 painter.drawPixmap(
-                    temp_pixmap.width() - cropped_with_border_pixmap.width() - 10, 
-                    10,  # Top margin
+                    temp_pixmap.width() - cropped_with_border_pixmap.width(), 
+                    0,  # No top margin
                     cropped_with_border_pixmap
                 )
                 
@@ -526,9 +574,9 @@ class ImageViewer(QMainWindow):
         label_width = label.width()
         label_height = label.height()
         
-        # Determine the optimal preview size (not more than 30% of the label)
-        max_preview_width = int(label_width * 0.3)
-        max_preview_height = int(label_height * 0.3)
+        # Determine the optimal preview size (user-controlled percentage of the label)
+        max_preview_width = int(label_width * self.preview_size_factor)
+        max_preview_height = int(label_height * self.preview_size_factor)
         
         # Calculate scaled dimensions while preserving aspect ratio
         aspect_ratio = rect.width() / rect.height()
@@ -550,12 +598,12 @@ class ImageViewer(QMainWindow):
         preview_width = max(preview_width, 100)
         preview_height = max(preview_height, 100)
         
-        # Define padding for more professional look
-        padding = 8  # Padding around the image
+        # Define padding and border width
+        padding = 2  # Reduced padding
+        border_width = 2
         
-        # Create the final image with shadow space
-        shadow_blur = 12
-        final_size = QSize(preview_width, preview_height) + QSize(padding * 2 + shadow_blur, padding * 2 + shadow_blur)
+        # Create the final image without shadow
+        final_size = QSize(preview_width, preview_height) + QSize(padding * 2 + border_width * 2, padding * 2 + border_width * 2)
         final_image = QImage(final_size, QImage.Format_ARGB32)
         final_image.fill(Qt.transparent)
         
@@ -563,63 +611,53 @@ class ImageViewer(QMainWindow):
         scaled_cropped = cropped.scaled(
             preview_width, 
             preview_height, 
-            Qt.IgnoreAspectRatio, 
+            Qt.KeepAspectRatio,
             Qt.SmoothTransformation
         )
+        
+        # Calculate centering offsets if aspect ratio preserved scaling creates smaller image
+        x_offset = (preview_width - scaled_cropped.width()) // 2
+        y_offset = (preview_height - scaled_cropped.height()) // 2
         
         # Set up painter for final image
         painter = QPainter(final_image)
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
         
-        # Draw shadow (more sophisticated)
-        shadow_color = QColor(0, 0, 0, 70)
-        for i in range(shadow_blur):
-            opacity = 0.5 - (i / shadow_blur / 2.0)
-            painter.setPen(QPen(QColor(0, 0, 0, int(opacity * 255)), 1))
-            painter.drawRoundedRect(
-                shadow_blur - i + padding,
-                shadow_blur - i + padding,
-                preview_width + i*2,
-                preview_height + i*2,
-                3, 3
-            )
-        
-        # Draw white background for the image (optional, gives a photo-like appearance)
-        shadow_offset = int(shadow_blur/2)  # Convert to int
+        # Draw white background for the image
         painter.setPen(Qt.NoPen)
         painter.setBrush(Qt.white)
         painter.drawRect(
-            padding + shadow_offset,
-            padding + shadow_offset,
-            preview_width,
-            preview_height
+            padding + x_offset,
+            padding + y_offset,
+            scaled_cropped.width(),
+            scaled_cropped.height()
         )
         
-        # Draw image with slight inset
+        # Draw image
         painter.drawImage(
-            padding + shadow_offset,
-            padding + shadow_offset,
+            padding + x_offset,
+            padding + y_offset,
             scaled_cropped
         )
         
         # Draw elegant border
         border_gradient = QLinearGradient(
-            padding + shadow_offset, 
-            padding + shadow_offset, 
-            padding + shadow_offset + preview_width, 
-            padding + shadow_offset + preview_height
+            padding + x_offset, 
+            padding + y_offset, 
+            padding + x_offset + scaled_cropped.width(), 
+            padding + y_offset + scaled_cropped.height()
         )
         border_gradient.setColorAt(0, QColor(220, 20, 60))  # Crimson red
         border_gradient.setColorAt(1, QColor(139, 0, 0))    # Dark red
         
-        painter.setPen(QPen(border_gradient, 2))
+        painter.setPen(QPen(border_gradient, border_width))
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(
-            padding + shadow_offset,
-            padding + shadow_offset,
-            preview_width,
-            preview_height
+            padding + x_offset,
+            padding + y_offset,
+            scaled_cropped.width(),
+            scaled_cropped.height()
         )
         
         painter.end()
@@ -657,6 +695,12 @@ class ImageViewer(QMainWindow):
         adjusted_x = point.x() - pixmap_rect.left()
         adjusted_y = point.y() - pixmap_rect.top()
         
+        # Check if point is inside the pixmap rect
+        if adjusted_x < 0 or adjusted_x > pixmap_rect.width() or adjusted_y < 0 or adjusted_y > pixmap_rect.height():
+            # Clamp to pixmap rect bounds
+            adjusted_x = max(0, min(adjusted_x, pixmap_rect.width()))
+            adjusted_y = max(0, min(adjusted_y, pixmap_rect.height()))
+        
         # Calculate the scale factors
         scale_x = image.width() / pixmap_rect.width()
         scale_y = image.height() / pixmap_rect.height()
@@ -686,27 +730,48 @@ class ImageViewer(QMainWindow):
                 # Map to label coordinate space
                 label_pos = self.labels[image_index].mapFromParent(event.pos())
                 
-                # Convert to image coordinate space
-                image_x, image_y = self.scalePoint(label_pos, self.images[image_index], self.pixmap_rects[image_index])
-                self.begin = QPoint(image_x, image_y)
-                self.end = self.begin
-                
-                # Set up the rectangle
-                self.rect.setTopLeft(self.begin)
-                self.rect.setBottomRight(self.end)
-                self.is_drawing = True
-                self.updatePixmap()
+                # Check if the point is inside the actual image area
+                if self.pixmap_rects[image_index].contains(label_pos):
+                    # Convert to image coordinate space
+                    image_x, image_y = self.scalePoint(label_pos, self.images[image_index], self.pixmap_rects[image_index])
+                    self.begin = QPoint(image_x, image_y)
+                    self.end = self.begin
+                    
+                    # Set up the rectangle
+                    self.rect.setTopLeft(self.begin)
+                    self.rect.setBottomRight(self.end)
+                    self.is_drawing = True
+                    
+                    # Store which image we're drawing on
+                    self.active_image_index = image_index
+                    
+                    # Update cursor to indicate drawing
+                    self.setCursor(Qt.CrossCursor)
+                    
+                    self.updatePixmap()
 
     def mouseMoveEvent(self, event):
         if self.is_drawing and self.can_draw_rect:
-            # Find which image is under the cursor
-            image_index = self.findImageAtPoint(event.pos())
-            if image_index >= 0:
-                # Map to label coordinate space
-                label_pos = self.labels[image_index].mapFromParent(event.pos())
+            # Use the active image index from press event for consistency
+            if hasattr(self, 'active_image_index') and self.active_image_index >= 0:
+                image_index = self.active_image_index
+                
+                # Map to label coordinate space using absolute global coordinates for accuracy
+                global_label_pos = self.labels[image_index].mapToGlobal(QPoint(0, 0))
+                label_pos = QPoint(event.globalPos().x() - global_label_pos.x(),
+                                  event.globalPos().y() - global_label_pos.y())
+                
+                # Get pixmap rect for this image
+                pixmap_rect = self.pixmap_rects[image_index]
+                
+                # Calculate relative position within the image
+                rel_x = max(0, min(label_pos.x() - pixmap_rect.left(), pixmap_rect.width()))
+                rel_y = max(0, min(label_pos.y() - pixmap_rect.top(), pixmap_rect.height()))
                 
                 # Convert to image coordinate space
-                image_x, image_y = self.scalePoint(label_pos, self.images[image_index], self.pixmap_rects[image_index])
+                image_x, image_y = self.scalePoint(QPoint(pixmap_rect.left() + rel_x, pixmap_rect.top() + rel_y), 
+                                                 self.images[image_index], pixmap_rect)
+                
                 self.end = QPoint(image_x, image_y)
                 
                 # Update the rectangle
@@ -718,6 +783,14 @@ class ImageViewer(QMainWindow):
             # Finalize the rectangle
             self.rect = QRect(self.begin, self.end).normalized()  # Normalize to handle drawing in any direction
             self.is_drawing = False
+            
+            # Reset cursor
+            if not self.can_draw_rect:
+                self.setCursor(Qt.ArrowCursor)
+            
+            # Clear active image index
+            if hasattr(self, 'active_image_index'):
+                del self.active_image_index
             
             # Show the rectangle dimensions in the status bar
             if self.rect.width() > 0 and self.rect.height() > 0:
@@ -887,6 +960,12 @@ class ImageViewer(QMainWindow):
             QImage.Format_RGBA8888_Premultiplied: "RGBA8888_Premultiplied"
         }
         return formats.get(format_code, "Unknown")
+
+    def updatePreviewSize(self, value):
+        """Update the preview size factor based on slider value"""
+        self.preview_size_factor = value / 100.0  # Convert from percentage to decimal
+        self.statusBar.showMessage(f'Preview size set to {value}%', 3000)
+        self.updatePixmap()  # Redraw all images with new preview size
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
